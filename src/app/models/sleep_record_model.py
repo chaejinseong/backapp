@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from sqlalchemy import BigInteger, Integer, DateTime, Identity, ForeignKey, Enum as SQLEnum
+from sqlalchemy import BigInteger, Integer, DateTime, Identity, ForeignKey, UniqueConstraint, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.enums.sleep_record_enum import SleepRecordSource
 
@@ -36,6 +36,11 @@ class SleepRecord(Base):
         DateTime(timezone=True),
         onupdate=lambda: datetime.now(KST)
     )  # 수정 시각
+
+    __table_args__ = (
+        # 한 사용자는 같은 날(기상한 날)에 수면 기록을 하나만 가진다.
+        UniqueConstraint("user_id", "record_date", name="uq_sleep_records_user_id_record_date"),
+    )
 
     # 관계
     user: Mapped["User"] = relationship("User", back_populates="sleep_records")

@@ -8,7 +8,7 @@ from app.infrastructure.redis import start_redis_client
 from app.infrastructure.s3 import start_s3_client
 from app.ml.emotion_analysis import EmotionAnalyzer
 import app.models
-from app.api import default_api, auth_api, user_api, memo_api, doctor_verification_api, doctor_api, mypage_api, mood_record_api, reflection_api, diary_api, calendar_api, care_task_api, point_api, llm_api, care_request_api
+from app.api import default_api, auth_api, user_api, memo_api, doctor_verification_api, doctor_api, mypage_api, mood_record_api, reflection_api, diary_api, calendar_api, care_task_api, point_api, llm_api, care_request_api, sleep_record_api
 from app.service.schedule_reminder_service import run_schedule_reminder_loop
 from app.service.care_request_service import run_care_request_expire_loop
 
@@ -78,6 +78,7 @@ app.include_router(mypage_api.router, prefix="/mypage", tags=["mypage"])
 app.include_router(mood_record_api.router, prefix="/mood-records", tags=["mood-records"])
 app.include_router(reflection_api.router, prefix="/reflections", tags=["reflections"])
 app.include_router(diary_api.router, prefix="/diaries", tags=["diaries"])
+app.include_router(sleep_record_api.router, prefix="/sleep-records", tags=["sleep-records"])
 app.include_router(care_task_api.router, prefix="/care-tasks", tags=["care-tasks"])
 app.include_router(doctor_verification_api.router, prefix="/doctor", tags=["doctor-verification"])
 app.include_router(doctor_verification_api.admin_router, prefix="/admin", tags=["admin"])
