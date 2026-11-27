@@ -10,7 +10,7 @@ if TYPE_CHECKING:
     from app.models.user_model import User
     from app.models.flower_model import Flower
     from app.models.expression_model import Expression
-    from app.models.item_model import Item
+    from app.models.character_position_model import CharacterPosition
 
 KST = timezone(timedelta(hours=9)) # UTC+9
 
@@ -27,18 +27,7 @@ class Character(Base):
     mood_expression_id: Mapped[int | None] = mapped_column(
         BigInteger, ForeignKey("expressions.expression_id", ondelete="SET NULL")
     )  # 오늘의 기분 (category=mood 중 랜덤)
-    outfit_item_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("items.item_id", ondelete="SET NULL")
-    )  # 적용한 의상
-    accessory_item_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("items.item_id", ondelete="SET NULL")
-    )  # 적용한 소품
-    background_item_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("items.item_id", ondelete="SET NULL")
-    )  # 적용한 배경
-    furniture_item_id: Mapped[int | None] = mapped_column(
-        BigInteger, ForeignKey("items.item_id", ondelete="SET NULL")
-    )  # 마이룸 가구 (1개만)
+    # 의상·소품·배경 슬롯은 폐기된 컨셉. 마이룸 가구는 myroom_entities, 캐릭터 위치는 character_positions에 둔다.
     name: Mapped[str | None] = mapped_column(String(30))  # 캐릭터 이름
     dirtiness: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)  # 꼬질함 0~100. 2일마다 +10
     hunger: Mapped[int] = mapped_column(SmallInteger, nullable=False, default=0)  # 배고픔 0~100. 하루마다 +10
@@ -69,7 +58,7 @@ class Character(Base):
     user: Mapped["User"] = relationship("User", back_populates="characters")
     current_flower: Mapped["Flower | None"] = relationship("Flower")
     mood_expression: Mapped["Expression | None"] = relationship("Expression")
-    outfit_item: Mapped["Item | None"] = relationship("Item", foreign_keys=[outfit_item_id])
-    accessory_item: Mapped["Item | None"] = relationship("Item", foreign_keys=[accessory_item_id])
-    background_item: Mapped["Item | None"] = relationship("Item", foreign_keys=[background_item_id])
-    furniture_item: Mapped["Item | None"] = relationship("Item", foreign_keys=[furniture_item_id])
+    position: Mapped["CharacterPosition | None"] = relationship(
+        "CharacterPosition", back_populates="character", uselist=False,
+        cascade="all, delete-orphan", passive_deletes=True
+    )  # 마이룸 안 캐릭터 위치 (1:1)

@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from app.models.user_flower_model import UserFlower
     from app.models.user_expression_model import UserExpression
     from app.models.user_item_model import UserItem
+    from app.models.myroom_entity_model import MyroomEntity
     from app.models.care_action_log_model import CareActionLog
     from app.models.point_history_model import PointHistory
     from app.models.user_mission_log_model import UserMissionLog
@@ -212,6 +213,10 @@ class User(Base):
     )
     user_items: Mapped[list["UserItem"]] = relationship(
         "UserItem", back_populates="user",
+        cascade="all, delete-orphan", passive_deletes=True
+    )
+    myroom_entities: Mapped[list["MyroomEntity"]] = relationship(
+        "MyroomEntity", back_populates="user",
         cascade="all, delete-orphan", passive_deletes=True
     )
     care_action_logs: Mapped[list["CareActionLog"]] = relationship(

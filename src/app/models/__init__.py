@@ -1,4 +1,4 @@
-# 서버 시작 시 Base.metadata가 모든 테이블을 알도록 50개 모델을 모두 import 한다.
+# 서버 시작 시 Base.metadata가 모든 테이블을 알도록 52개 모델을 모두 import 한다.
 
 # 배치 1 — 회원·병원·권한
 from app.models.user_model import User
@@ -54,6 +54,8 @@ from app.models.flower_model import Flower
 from app.models.expression_model import Expression
 from app.models.item_model import Item
 from app.models.character_model import Character
+from app.models.character_position_model import CharacterPosition
+from app.models.myroom_entity_model import MyroomEntity
 from app.models.user_flower_model import UserFlower
 from app.models.user_expression_model import UserExpression
 from app.models.user_item_model import UserItem
@@ -72,6 +74,6 @@ __all__ = [
     "CareRequest", "RequestContact", "RequestMessage", "Appointment",
     "AppointmentChange", "Schedule", "Notification", "DoctorMemo",
     "Diary", "DiaryAnalysis", "EmotionRecord", "SleepRecord", "ExerciseRecord", "Attendance",
-    "Flower", "Expression", "Item", "Character", "UserFlower", "UserExpression",
+    "Flower", "Expression", "Item", "Character", "CharacterPosition", "MyroomEntity", "UserFlower", "UserExpression",
     "UserItem", "CareActionLog", "Mission", "PointHistory", "UserMissionLog",
 ]

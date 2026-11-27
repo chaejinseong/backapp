@@ -72,10 +72,23 @@ async def update_me(
 
 
 # 회원 탈퇴 -> 토큰 무효화 + 쿠키 삭제
+# - 환자/의사는 서비스가 DB의 role로 구분해서 진행 중인 데이터(예약, 진료 요청, 담당 관계 등)를 함께 정리한다.
 @router.delete(
     "/me",
     summary="회원 탈퇴",
-    response_model=ApiResponseDTO
+    response_model=ApiResponseDTO,
+    responses={
+        404: {
+            "description": "이미 탈퇴했거나 존재하지 않는 회원",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "detail": "회원이 존재하지 않습니다."
+                    }
+                }
+            }
+        }
+    }
 )
 async def withdraw(
     response: Response,

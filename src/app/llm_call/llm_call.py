@@ -142,6 +142,7 @@ class ReplyContext:
     # RAG 검색 결과. None이면 검색 실패 또는 미사용 (RAG 없이 진행)
     references: list[ReferenceChunk] | None
     previous_summary: str | None = None  # 이전 세션의 context_summary
+    care_notice: str | None = None  # 서버가 만든 진료 변경 안내 문장 (의사 탈퇴 등). 없으면 None
     user_turns: int = 0  # 이번 메시지를 포함한 사용자 발화 수
     min_user_turns: int = 0  # 종료할 수 있는 최소 사용자 발화 수 (service의 MIN_USER_TURNS)
     feedback: str | None = None  # 직전 시도의 검증 실패 사유
@@ -302,6 +303,7 @@ def build_reply_user_content(context: ReplyContext) -> str:
     sections = [
         _tag("session_state", _render_session_state(context.user_turns, context.min_user_turns)),
         _tag("previous_session_summary", _escape(context.previous_summary) if context.previous_summary else NOT_PROVIDED),
+        _tag("care_notice", _escape(context.care_notice) if context.care_notice else NOT_PROVIDED),
         _tag("checklist", _render_checklist(context.checklist)),
         _tag("risk_analysis", _render_risk(context.risk_signals, latest_user_seq)),
         _tag("emotion_analysis", _render_current_emotion(context.conversation, latest_user_seq)),
