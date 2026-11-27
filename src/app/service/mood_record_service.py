@@ -27,22 +27,15 @@ class MoodRecordService:
         today = today_kst()
         if day>today: 
             raise HTTPException(
-                status_code=status.HTTP_404_BAD_REQUEST,
+                status_code=status.HTTP_400_BAD_REQUEST,
                 detail = "미래 날짜는 기록할 수 없습니다"           
             )
-    #ORM -> 응답 DTO (칼럼 이름과 DTO 필드 이름이 같아서 그대로 옮겨진다)
-    @staticmethod
-    def _to_response(record: EmotionRecord) -> MoodRecordResponseDTO:
-        return MoodRecordResponseDTO.model_validate(record)
-
-    #번호로 내 기록 찾기. 없으면(남의 것, 지운 것 포함) 404
-    async def _get_or_404(self, user_id: int, emotion_id: int) -> EmotionRecord:
-        record = await self.repo.find_by_id(user_id, emotion_id)
-        if record is None:
+        if day < today - timedelta(days=PAST_DAYS_LIMIT):
             raise HTTPException(
-                status_code = status.HTTP_400_BAD_REQUEST,
-                detail = f"{PAST_DAYS_LIMIT}일 전까지만 기록할 수 있습니다."
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"{PAST_DAYS_LIMIT}일 전까지만 기록할 수 있습니다."
             )
+        
 
     #ORM -> 응답 DTO (칼럼 이름과 DTO 필드 이름이 같아서 그대로 옮겨짐)
     @staticmethod
@@ -70,7 +63,7 @@ class MoodRecordService:
         return await self.get_by_date(user_id, today_kst())
 
     #3. 날짜별 상세 (기록 + 이날 한 돌봄)
-    async def get_detail(self,user_id: int, dat:date) -> MoodRecordDetailResponseDTO:
+    async def get_detail(self,user_id: int, day:date) -> MoodRecordDetailResponseDTO:
         return MoodRecordDetailResponseDTO(
             record=await self.get_by_date(user_id, day),
             done_missions=await self.repo.find_done_mission_names(user_id,day)
