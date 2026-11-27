@@ -6,37 +6,34 @@ from app.enums.mission_enum import MissionCategory
 
 # TODO: DTO 추가
 
-#일일목표(화면; 홈 일일목표, 오늘의 일일 목표, 오늘의 작은 돌봅)
+#일일목표 1개(화면; 홈 일일목표, 오늘의 일일 목표, 오늘의 작은 돌봄)
 class CareTaskItemResponseDTO(BaseDTO):
-    mission_id: int 
-    description: str | None=None    
+    mission_id: int
+    name: str
+    description: str | None=None
     category:MissionCategory | None=None    #body, habit, mind
     reward_point: int
-    target_count: int   # 물 마시기는 6, 나머지는 1
-    progress_count: int #오늘 진행("ex) 지금까지 3잔")
-    is_auto: bool   #True면 기록했을 때 자동 완료 -> 앱은 해당 화면으로 이동만
     is_completed: bool  # True-> 오늘 한 일, False-> 해 볼 만한 것
-    is_completed_at:datetime | None=None
+    completed_at:datetime | None=None   # 오늘 완료한 시각, 미완료면 None
 
-#오늘 할 일 화면 전체
+#오늘의 일일목표 화면 전체 (모두 완료 보너스는 목록에 넣지 않고 따로 보낸다)
 class TodayCareTaskResponseDTO(BaseDTO):
     today: date
-    mission: list[CareTaskItemResponseDTO]
+    missions: list[CareTaskItemResponseDTO]  # 표시 순서(sort_order)대로
     completed_count: int #2/3 에서 2
     total_count: int    #2/3에서 3
-    bonus_received: bool
+    bonus_point: int | None=None    # 모두 완료 보너스 포인트, 보너스 미션이 없으면 None
+    bonus_received: bool    # 오늘 보너스를 받았는지
     earned_today: int   #오늘 모은 포인트
-    daily_cap: int  # 하루 최대 60p
 
-#체크/체크 취소 결과
-class CareTaskCheckResponseDTO(BaseDTO):
+#미션 달성 결과 - 기능 API(일기, 상담 등) 응답에 같이 담아 프론트에 보낸다
+class MissionCompleteResponseDTO(BaseDTO):
     mission_id: int
-    progress_count: int
-    is_completed: bool
-    changed_point: int  # 이번에 받은 포인트 +, 취소된 포인트 -, 없으면 0
-    bonus_changed: int  # 보너스 지급 +10, 취소 -10, 없으면 0
-    earned_today: int
-    completed_count: int
+    newly_completed: bool   # 이번 요청으로 완료됐으면 True, 오늘 이미 완료한 미션이면 False
+    completed_count: int    # 오늘 완료한 화면 미션 수 (2/3 에서 2)
+    total_count: int        # 화면 미션 수 (2/3 에서 3)
+    bonus_completed: bool   # 이번 요청으로 모두 완료 보너스를 달성했으면 True
+    earned_point: int       # 이번 요청으로 받은 포인트 (미션 + 보너스), 없으면 0
 
 #이번 주 돌아보기 - 하루. -> 오늘의 일일목표 화면 아래에 있는 막대그래프 부분
 class WeeklyDayResponseDTO(BaseDTO):

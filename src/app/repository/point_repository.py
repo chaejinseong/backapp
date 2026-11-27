@@ -35,7 +35,7 @@ class PointRepository:
             .with_for_update()
         )
         result = await self.db.execute(query)
-        return result.scalar_one_or_none
+        return result.scalar_one_or_none()
 
     #3. 내역 1줄 추가 (flush하면 history_id가 채워진다)
     async def insert_history(self, history: PointHistory) -> PointHistory:
@@ -43,16 +43,7 @@ class PointRepository:
         await self.db.flush()
         return history
 
-    #4.내 내역 1줄 조회
-    async def find_history(self, user_id: int, history_id: int) -> PointHistory|None:
-        query = select(PointHistory).where(
-            PointHistory.history_id == history_id,
-            PointHistory.user_id == user_id
-        )
-        result = await self.db.execute(query)
-        return result.scalar_one_or_none()
-
-    # 5. 기간 [start, end) 안에서 한 종류(얻음·씀·취소)의 합계
+    # 4. 기간 [start, end) 안에서 한 종류(얻음·씀·취소)의 합계
     async def sum_amount(
         self, user_id: int, history_type: PointHistoryType, start: datetime, end: datetime
     ) -> int:
@@ -66,7 +57,7 @@ class PointRepository:
         return result.scalar_one()
 
 
-    # 6. 내역 목록 (최신순). cursor가 있으면 그보다 이전 것만. 다음 페이지 확인용으로 size+1개 가져온다
+    # 5. 내역 목록 (최신순). cursor가 있으면 그보다 이전 것만. 다음 페이지 확인용으로 size+1개 가져온다
     async def find_histories(
         self, user_id: int, types: list[PointHistoryType], cursor: int | None, size: int
     ) -> list[PointHistory]:

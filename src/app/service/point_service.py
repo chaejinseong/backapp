@@ -17,10 +17,13 @@ TAB_TYPES = {
     "spend": [PointHistoryType.SPEND],
 }
 
+# point_histories.reason 컬럼 길이 (String(50))
+REASON_MAX_LENGTH = 50
+
 
 # 포인트 비즈니스 로직, 예외 처리
-# - earn / spend / cancel 은 다른 서비스(오늘 할 일, 포인트샵, 자장가)가 부른다.
-# - 이 세 함수는 commit하지 않는다. 부른 서비스가 자기 일까지 끝낸 뒤 한 번에 commit한다.
+# - earn / spend 는 다른 서비스(오늘 할 일, 포인트샵, 자장가)가 부른다.
+# - 이 두 함수는 commit하지 않는다. 부른 서비스가 자기 일까지 끝낸 뒤 한 번에 commit한다.
 class PointService:
 
     def __init__(self, repo: PointRepository):
@@ -38,8 +41,20 @@ class PointService:
         return user
 
 
+    # 금액·사유 검증 - 다른 서비스가 넘기는 값이라 잘못되면 코드 오류(ValueError)로 본다
+    @staticmethod
+    def _validate(amount: int, reason: str) -> None:
+        if amount <= 0:
+            raise ValueError(f"포인트 금액은 1 이상이어야 합니다: {amount}")
+        if len(reason) > REASON_MAX_LENGTH:
+            raise ValueError(f"사유는 {REASON_MAX_LENGTH}자 이하여야 합니다: {reason}")
+
+
     # 1. 포인트 얻기 (일일목표 완료, 모두 완료 보너스)
+    # - 회원을 잠그고 잔액 증가 + 내역 추가까지 flush한다. commit은 부른 서비스가 한다.
+    # - 돌려주는 내역의 history_id를 미션 완료 기록(user_mission_logs.history_id)에 연결한다.
     async def earn(self, user_id: int, amount: int, mission_id: int | None, reason: str) -> PointHistory:
+        self._validate(amount, reason)
         user = await self._lock_user_or_404(user_id)
         user.point_balance += amount
 
@@ -55,7 +70,10 @@ class PointService:
 
 
     # 2. 포인트 쓰기 (포인트샵 구매, 자장가) - 잔액이 모자라면 400
+    # - 회원을 잠근 뒤 잔액을 확인하므로, 동시에 두 번 사도 잔액이 음수가 되지 않는다.
+    # - commit은 부른 서비스가 아이템 지급까지 끝낸 뒤 한다.
     async def spend(self, user_id: int, amount: int, item_id: int | None, reason: str) -> PointHistory:
+        self._validate(amount, reason)
         user = await self._lock_user_or_404(user_id)
         if user.point_balance < amount:
             raise HTTPException(
@@ -74,33 +92,7 @@ class PointService:
             base_date=now_kst()
         ))
 
-
-    # 3. 얻은 포인트 취소 (일일목표 체크 취소, 보너스 취소)
-    # - 원래 내역과 같은 날(base_date)로 남겨야 그날 모은 포인트·60P 상한 계산이 맞는다.
-    # - 그사이 포인트를 써서 잔액이 모자라면 0까지만 줄인다.
-    async def cancel(self, user_id: int, history_id: int, reason: str | None = None) -> PointHistory:
-        origin = await self.repo.find_history(user_id, history_id)
-        if not origin or origin.history_type != PointHistoryType.EARN:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="취소할 수 없는 포인트 내역입니다."
-            )
-
-        user = await self._lock_user_or_404(user_id)
-        user.point_balance = max(0, user.point_balance - origin.amount)
-
-        return await self.repo.insert_history(PointHistory(
-            user_id=user_id,
-            history_type=PointHistoryType.CANCEL,
-            amount=origin.amount,
-            balance_after=user.point_balance,
-            mission_id=origin.mission_id,
-            reason=reason or f"{origin.reason} 취소",
-            base_date=origin.base_date
-        ))
-
-
-    # 4. 그날 모은 포인트 = 얻음 − 취소 (60P 상한 확인용)
+    # 3. 그날 모은 포인트 = 얻음 − 취소 (60P 상한 확인용)
     async def earned_on(self, user_id: int, day: date) -> int:
         start, end = kst_day_range(day)
         earned = await self.repo.sum_amount(user_id, PointHistoryType.EARN, start, end)
@@ -108,7 +100,7 @@ class PointService:
         return earned - canceled
 
 
-    # 5. 내 포인트 요약
+    # 4. 내 포인트 요약
     async def get_summary(self, user_id: int) -> PointSummaryResponseDTO:
         user = await self.repo.find_user(user_id)
         if not user:
@@ -131,7 +123,7 @@ class PointService:
         )
 
 
-    # 6. 포인트 기록 (전체·획득·사용 탭, 최신순)
+    # 5. 포인트 기록 (전체·획득·사용 탭, 최신순)
     async def get_histories(
         self, user_id: int, tab: str, cursor: int | None, size: int
     ) -> PointHistoryListResponseDTO:

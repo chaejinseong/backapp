@@ -35,7 +35,7 @@ async def seed_mission(db) -> int:
     #이미 들어가 있는 이름은 건너뛴다
     names = [m["name"]for m in MISSIONS]
     result = await db.execute(select(Mission.name).where(Mission.name.in_(names)))
-    existing = set(result.scalars().all)
+    existing = set(result.scalars().all())
 
     new_rows = [Mission(**m) for m in MISSIONS if m["name"] not in existing]
     db.add_all(new_rows)
