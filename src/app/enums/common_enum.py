@@ -28,3 +28,4 @@ class Season(str, Enum):
     SUMMER = "summer"
     AUTUMN = "autumn"
     WINTER = "winter"
+    COMMON = "common"
