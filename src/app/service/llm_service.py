@@ -22,6 +22,7 @@ from app.infrastructure.postgresql import AsyncSessionLocal
 from app.repository.llm_repository import LlmRepository, get_llm_repository
 from app.repository.rag_repository import RagRepository
 from app.service.rag_service import RagService, get_rag_service
+from app.service.care_notice_service import CareNoticeService, get_care_notice_service
 from app.ml.emotion_analysis import EmotionAnalyzer, get_emotion_analyzer
 from app.models.chat_session_model import ChatSession
 from app.models.message_model import Message
@@ -91,15 +92,19 @@ class LlmService:
 
     # rag_service는 같은 요청의 DB 세션을 함께 쓴다. (FastAPI가 get_postgresql_db를 요청당 1번만 만든다)
     # emotion_analyzer는 lifespan에서 한 번 로드한 모델이다. 로드에 실패했으면 None (감정분석 없이 진행)
+    # care_notice_service는 진료 변경 안내(의사 탈퇴 등, Redis)를 상담 답변으로 전달할 때 쓴다.
+    #   None이면 안내 없이 진행한다. (run_session_summary처럼 직접 생성하는 곳은 넘기지 않으므로 맨 뒤 선택 인자)
     def __init__(
         self,
         repo: LlmRepository,
         rag_service: RagService,
         emotion_analyzer: EmotionAnalyzer | None = None,
+        care_notice_service: CareNoticeService | None = None,
     ):
         self.repo = repo
         self.rag_service = rag_service
         self.emotion_analyzer = emotion_analyzer
+        self.care_notice_service = care_notice_service
 
 
     # 예외가 나면 rollback하고 다시 던진다. (HTTPException 포함. 잠금도 함께 풀린다)
@@ -409,7 +414,7 @@ class LlmService:
 
         # --- 프롬프트 조립 + LLM 호출 / 검증 루프 ---
         # 프롬프트 재료(원문 + 감정, 체크리스트, 위험, 이전 요약)는 DB에서 일괄 조회하고, RAG 검색은 턴당 1번만 한다.
-        context = await self._build_prompt_context(session_id, prev_session_id)
+        context = await self._build_prompt_context(user_id, session_id, prev_session_id)
         document_ids = await self.repo.find_session_document_ids(session_id)
         await self.repo.commit() # 읽기 트랜잭션을 닫는다. (외부 API 호출 중 연결을 붙잡지 않기 위함)
         context = replace(
@@ -462,6 +467,11 @@ class LlmService:
         except Exception as error:
             await self._rollback_and_raise(error)
 
+        # 진료 변경 안내를 프롬프트에 넣었고 답변 저장(commit)까지 성공했으면 안내를 지운다.
+        # - 재전송(existing) 경로, 모든 시도 실패(_save_failed_turn) 경로는 여기까지 오지 않으므로 지우지 않는다.
+        if context.care_notice is not None:
+            await self._delete_care_notice(user_id)
+
         return SendMessageResponseDTO(
             message=MessageResponseDTO.model_validate(reply),
             session_status=session.status,
@@ -499,8 +509,9 @@ class LlmService:
     # - 위험 신호 구분 (llm_call.ReplyContext.risk_signals)
     #   - 이번 사용자 발화에 입력 검사(guard_checks gate=a) 기록이 있으면 분석한 것으로 보고 목록을 넘긴다. (감지 없으면 [])
     #   - 기록이 없으면 None ("제공되지 않음"). 분석하지 않은 발화를 위험 없음으로 넘기지 않기 위함
+    # - 진료 변경 안내(care_notice): Redis에서 읽어 문장으로 바꿔 넣는다. 없거나 조회 실패면 None (_load_care_notice)
     async def _build_prompt_context(
-        self, session_id: int, prev_session_id: int | None
+        self, user_id: int, session_id: int, prev_session_id: int | None
     ) -> ReplyContext:
         rows = await self.repo.find_messages_with_emotions(session_id)
         checklists = await self.repo.find_session_checklist(session_id)
@@ -526,9 +537,59 @@ class LlmService:
             risk_signals=risk_signals,
             references=None,
             previous_summary=previous_summary,
+            care_notice=await self._load_care_notice(user_id),
             user_turns=sum(1 for message, _ in rows if message.role == MessageRole.USER),
             min_user_turns=MIN_USER_TURNS,
         )
+
+
+    # 5-1-0. 진료 변경 안내 조회 (Redis) -> 프롬프트용 한국어 문장
+    # - care_notice_service가 없거나 안내가 없으면 None
+    # - 조회가 실패해도 상담은 계속한다. (RAG 실패 처리와 같은 방식, 안내는 다음 턴에 다시 시도된다)
+    async def _load_care_notice(self, user_id: int) -> str | None:
+        if self.care_notice_service is None:
+            return None
+
+        try:
+            notice = await self.care_notice_service.get_notice(user_id)
+            return self._to_care_notice_text(notice) if notice else None
+        except Exception:
+            logger.exception("진료 변경 안내 조회 실패. 안내 없이 진행합니다. (user_id=%s)", user_id)
+            return None
+
+
+    # 5-1-0-1. 안내 dict -> 사람이 읽을 수 있는 문장 (순수 함수)
+    # - 예약 일시는 KST 기준 "M월 D일 HH:MM"
+    @staticmethod
+    def _to_care_notice_text(notice: dict) -> str:
+        sentences = ["담당 선생님이 더 이상 진료를 이어갈 수 없게 되었습니다."]
+
+        appointment_times = [
+            f"{at.month}월 {at.day}일 {at:%H:%M}"
+            for at in (
+                datetime.fromisoformat(value).astimezone(KST)
+                for value in notice.get("cancelled_appointments", [])
+            )
+        ]
+        if appointment_times:
+            sentences.append(f"{', '.join(appointment_times)} 예약이 취소되었습니다.")
+        if notice.get("cancelled_request"):
+            sentences.append("진행 중이던 진료 요청도 취소되었습니다.")
+
+        sentences.append("새 병원 연결은 진료 요청 화면에서 다시 할 수 있습니다.")
+        return " ".join(sentences)
+
+
+    # 5-1-0-2. 진료 변경 안내 삭제 (답변 저장 성공 후)
+    # - 삭제가 실패해도 응답은 정상으로 내려준다. (다음 턴에 안내가 한 번 더 들어갈 수 있다)
+    async def _delete_care_notice(self, user_id: int) -> None:
+        if self.care_notice_service is None:
+            return
+
+        try:
+            await self.care_notice_service.delete_notice(user_id)
+        except Exception:
+            logger.exception("진료 변경 안내 삭제 실패 (user_id=%s)", user_id)
 
 
     # 5-1-1. RAG 검색 (턴당 1번, LLM 재시도와 관계없이)
@@ -1299,5 +1360,6 @@ def get_llm_service(
     repo: LlmRepository = Depends(get_llm_repository),
     rag_service: RagService = Depends(get_rag_service),
     emotion_analyzer: EmotionAnalyzer | None = Depends(get_emotion_analyzer),
+    care_notice_service: CareNoticeService = Depends(get_care_notice_service),
 ):
-    return LlmService(repo, rag_service, emotion_analyzer)
+    return LlmService(repo, rag_service, emotion_analyzer, care_notice_service)
