@@ -1,5 +1,5 @@
 from datetime import date, datetime, timedelta, timezone
-from sqlalchemy import BigInteger, Integer, Date, DateTime, Identity, ForeignKey, Index, text, Enum as SQLEnum
+from sqlalchemy import BigInteger, Integer, Date, DateTime, Identity, ForeignKey, Index, Enum as SQLEnum
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.enums.care_action_log_enum import CareActionLogActionType
 
@@ -26,7 +26,7 @@ class CareActionLog(Base):
     action_type: Mapped[CareActionLogActionType] = mapped_column(
         SQLEnum(CareActionLogActionType, native_enum=False, values_callable=lambda e: [m.value for m in e]),
         nullable=False
-    )  # water·sunlight·pat=무료, lullaby=15P (모두 하루 1번)
+    )  # snack=먹이기, wash=씻기기, play=놀아주기(하루 3번)
     action_date: Mapped[date] = mapped_column(Date, nullable=False)  # 하루 1번 확인용 ('하루' = 자정)
     exp_gain: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 오른 경험치
     point_spent: Mapped[int] = mapped_column(Integer, nullable=False, default=0)  # 쓴 포인트
@@ -37,11 +37,8 @@ class CareActionLog(Base):
     )  # 기록 시각
 
     __table_args__ = (
-        # 하루 1번 제한: water·sunlight·pat·lullaby만 (user_id, action_type, action_date) UNIQUE
-        Index(
-            "uix_care_action_logs_user_action_daily", "user_id", "action_type", "action_date",
-            unique=True, postgresql_where=text("action_type IN ('water','sunlight','pat','lullaby')")
-        ),
+        # 그날 상호작용 횟수 조회용 (놀아주기 하루 3번 제한은 서비스에서 캐릭터를 잠근 뒤 개수를 세어 확인한다)
+        Index("ix_care_action_logs_user_action_date", "user_id", "action_type", "action_date"),
     )
 
     # 관계
